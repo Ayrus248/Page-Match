@@ -1,11 +1,58 @@
+// ============================================================
 // netlify/functions/recommend.js
-// This runs on Netlify's server — your API key is never exposed to users
+// Rate limiting: 20 searches/day per IP (via Upstash Redis)
+// ============================================================
+
+const DAILY_LIMIT = 20;
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
 
+  // ---- IP Rate Limiting (Upstash Redis) ----
+  const UPSTASH_URL   = process.env.UPSTASH_REDIS_REST_URL;
+  const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  if (UPSTASH_URL && UPSTASH_TOKEN) {
+    const ip =
+      event.headers['x-forwarded-for']?.split(',')[0].trim() ||
+      event.headers['client-ip'] ||
+      'unknown';
+
+    const key = `pagematch:${ip}:${todayKey()}`;
+
+    try {
+      // Increment count and set 24h expiry
+      const incrResp = await upstash(UPSTASH_URL, UPSTASH_TOKEN, ['INCR', key]);
+      const count = incrResp.result;
+
+      if (count === 1) {
+        // First request today — set expiry to end of day
+        await upstash(UPSTASH_URL, UPSTASH_TOKEN, ['EXPIRE', key, 86400]);
+      }
+
+      if (count > DAILY_LIMIT) {
+        return {
+          statusCode: 429,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            error: `Daily limit reached. You can make ${DAILY_LIMIT} searches per day. Please come back tomorrow!`,
+            limitReached: true,
+            remaining: 0,
+          }),
+        };
+      }
+
+      const remaining = DAILY_LIMIT - count;
+
+    } catch (e) {
+      // If Redis is down, allow the request through (fail open)
+      console.error('Redis error:', e.message);
+    }
+  }
+
+  // ---- Parse request ----
   const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
   if (!GEMINI_API_KEY) {
     return { statusCode: 500, body: JSON.stringify({ error: 'API key not configured on server.' }) };
@@ -23,8 +70,8 @@ exports.handler = async (event) => {
     return { statusCode: 400, body: JSON.stringify({ error: 'Missing mode or query.' }) };
   }
 
+  // ---- Call Gemini ----
   const prompt = buildPrompt(mode, query, options || {});
-
   const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
   let lastError;
 
@@ -63,8 +110,29 @@ exports.handler = async (event) => {
     }
   }
 
-  return { statusCode: 429, body: JSON.stringify({ error: 'All models hit quota. Please wait a minute and try again.' }) };
+  return {
+    statusCode: 429,
+    body: JSON.stringify({ error: 'All models hit quota. Please wait a minute and try again.' }),
+  };
 };
+
+// ---- Upstash Redis helper ----
+async function upstash(url, token, command) {
+  const resp = await fetch(`${url}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(command),
+  });
+  return resp.json();
+}
+
+// ---- Today's date key (YYYY-MM-DD) ----
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 // ---- Prompt builder ----
 function buildPrompt(mode, query, options) {

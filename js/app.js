@@ -1,83 +1,82 @@
 // ============================================================
-// js/app.js  —  UI controller (3 modes: book / author / genre)
+// js/app.js  —  UI controller with localStorage rate limiting
 // ============================================================
 
 const App = (() => {
 
+  const DAILY_LIMIT = 10;
   let currentMode = 'book';
 
   const $ = id => document.getElementById(id);
 
-  // ---------- Mode switching ----------
+  // ---- localStorage rate limit ----
+  function getUsage() {
+    const today = new Date().toISOString().slice(0, 10);
+    const stored = JSON.parse(localStorage.getItem('pagematch_usage') || '{}');
+    if (stored.date !== today) return { date: today, count: 0 };
+    return stored;
+  }
+
+  function incrementUsage() {
+    const usage = getUsage();
+    usage.count += 1;
+    localStorage.setItem('pagematch_usage', JSON.stringify(usage));
+    return usage.count;
+  }
+
+  function getRemainingSearches() {
+    return Math.max(0, DAILY_LIMIT - getUsage().count);
+  }
+
+  function updateCounter() {
+    const remaining = getRemainingSearches();
+    const el = $('search-counter');
+    if (!el) return;
+    el.textContent = `${remaining} of 20 searches left today`;
+    el.className = 'search-counter-bar' + (remaining <= 5 ? ' counter-low' : '');
+  }
+
+  // ---- Mode switching ----
   function switchMode(mode) {
     currentMode = mode;
-
-    // update tab styles
     document.querySelectorAll('.mode-tab').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.mode === mode);
     });
-
-    // show/hide panels
     ['book', 'author', 'genre'].forEach(m => {
       $(`panel-${m}`).classList.toggle('hidden', m !== mode);
     });
-
-    // focus the right input
     const inputId = { book: 'input-book', author: 'input-author', genre: 'input-genre' }[mode];
-    setTimeout(() => $(`${inputId}`) && $(`${inputId}`).focus(), 50);
-
-    // hide old results
+    setTimeout(() => $(inputId)?.focus(), 50);
     $('results').classList.add('hidden');
     clearError();
   }
 
-  // ---------- Genre pill quick-select ----------
+  // ---- Genre pills ----
   function setGenre(el) {
     document.querySelectorAll('.genre-pill').forEach(p => p.classList.remove('selected'));
     el.classList.add('selected');
     $('input-genre').value = el.textContent;
   }
 
-  // ---------- Get current query & options ----------
+  // ---- Query & options ----
   function getQuery() {
-    return {
-      book:   () => $('input-book').value.trim(),
-      author: () => $('input-author').value.trim(),
-      genre:  () => $('input-genre').value.trim(),
-    }[currentMode]();
+    return { book: 'input-book', author: 'input-author', genre: 'input-genre' }[currentMode];
   }
 
   function getOptions() {
-    if (currentMode === 'book') return {
-      reddit:    $('opt-reddit').checked,
-      series:    $('opt-series').checked,
-      classics:  $('opt-classics').checked,
-    };
-    if (currentMode === 'author') return {
-      reddit:     $('opt-reddit-author').checked,
-      sameAuthor: $('opt-same-author').checked,
-    };
-    if (currentMode === 'genre') return {
-      reddit:   $('opt-reddit-genre').checked,
-      classics: $('opt-classics-genre').checked,
-    };
+    if (currentMode === 'book')   return { reddit: $('opt-reddit').checked,        series: $('opt-series').checked,      classics: $('opt-classics').checked };
+    if (currentMode === 'author') return { reddit: $('opt-reddit-author').checked,  sameAuthor: $('opt-same-author').checked };
+    if (currentMode === 'genre')  return { reddit: $('opt-reddit-genre').checked,   classics: $('opt-classics-genre').checked };
   }
 
-  // ---------- Result section labels ----------
-  const LABELS = {
-    book:   { title: 'Recommended for you',          badge: 'Similar books' },
-    author: { title: 'Books you might love',          badge: 'By author & similar' },
-    genre:  { title: 'Top picks in this genre',       badge: 'Genre picks' },
-  };
-
-  // ---------- Helpers ----------
+  // ---- Helpers ----
   function esc(s) {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
   function setStatus(msg) { $('status-text').textContent = msg; }
   function showStatus(v)  { $('status-bar').classList.toggle('hidden', !v); }
-  function showError(msg) { $('error-box').textContent = msg; $('error-box').classList.remove('hidden'); }
+  function showError(msg) { $('error-box').innerHTML = msg; $('error-box').classList.remove('hidden'); }
   function clearError()   { $('error-box').classList.add('hidden'); }
 
   function setLoading(v) {
@@ -85,7 +84,13 @@ const App = (() => {
     if (btn) { btn.disabled = v; btn.textContent = v ? 'Searching…' : 'Find Books'; }
   }
 
-  // ---------- Render recommendations ----------
+  const LABELS = {
+    book:   { title: 'Recommended for you',    badge: 'Similar books' },
+    author: { title: 'Books you might love',   badge: 'By author & similar' },
+    genre:  { title: 'Top picks in this genre', badge: 'Genre picks' },
+  };
+
+  // ---- Render recommendations ----
   function renderRecs(recs) {
     $('recs-grid').innerHTML = recs.map((r, i) => `
       <article class="rec-card">
@@ -96,18 +101,13 @@ const App = (() => {
         ${r.tags?.length ? `<div class="rec-tags">${r.tags.map(t => `<span class="rec-tag">${esc(t)}</span>`).join('')}</div>` : ''}
       </article>
     `).join('');
-
-    const lbl = LABELS[currentMode];
-    $('results-title').textContent = lbl.title;
-    $('results-badge').textContent = lbl.badge;
+    $('results-title').textContent = LABELS[currentMode].title;
+    $('results-badge').textContent = LABELS[currentMode].badge;
   }
 
-  // ---------- Render Reddit ----------
+  // ---- Render Reddit ----
   function renderReddit(threads) {
-    const sec = $('reddit-section');
-    const div = $('reddit-divider');
     const list = $('reddit-threads');
-
     if (!threads.length) {
       list.innerHTML = '<p class="no-reddit">No Reddit threads found — try a more popular title!</p>';
     } else {
@@ -124,22 +124,23 @@ const App = (() => {
         </a>
       `).join('');
     }
-
-    sec.classList.remove('hidden');
-    div.classList.remove('hidden');
+    $('reddit-section').classList.remove('hidden');
+    $('reddit-divider').classList.remove('hidden');
   }
 
-  // ---------- Main search ----------
+  // ---- Main search ----
   async function search() {
-    const query = getQuery();
-    if (!query) {
-      const inputId = { book: 'input-book', author: 'input-author', genre: 'input-genre' }[currentMode];
-      $(inputId)?.focus();
+    const inputId = getQuery();
+    const query = $(inputId)?.value.trim();
+    if (!query) { $(inputId)?.focus(); return; }
+
+    // --- localStorage check ---
+    if (getRemainingSearches() <= 0) {
+      showError('⚠ You\'ve reached your <strong>10 searches for today</strong>. Come back tomorrow!');
       return;
     }
 
     const opts = getOptions();
-
     clearError();
     $('results').classList.add('hidden');
     $('reddit-section').classList.add('hidden');
@@ -153,15 +154,17 @@ const App = (() => {
     try {
       setStatus('Asking AI for book recommendations…');
       const recs = await Claude.getRecommendations(currentMode, query, opts);
+
+      // Increment only on success
+      incrementUsage();
+      updateCounter();
+
       renderRecs(recs);
 
       if (opts.reddit) {
         setStatus('Fetching Reddit discussions…');
-        const redditQuery = currentMode === 'author'
-          ? `${query} books recommendations`
-          : currentMode === 'genre'
-          ? `${query} book recommendations`
-          : query;
+        const redditQuery = currentMode === 'author' ? `${query} books recommendations`
+          : currentMode === 'genre' ? `${query} book recommendations` : query;
         const threads = await Reddit.fetchThreads(redditQuery);
         renderReddit(threads);
       }
@@ -172,18 +175,27 @@ const App = (() => {
 
     } catch (err) {
       showStatus(false);
-      showError('⚠ ' + (err.message || 'Something went wrong. Please try again.'));
+      const msg = err.message || 'Something went wrong. Please try again.';
+      // If server says limit reached, update local counter too
+      if (msg.includes('Daily limit')) {
+        localStorage.setItem('pagematch_usage', JSON.stringify({ date: new Date().toISOString().slice(0, 10), count: DAILY_LIMIT }));
+        updateCounter();
+      }
+      showError('⚠ ' + msg);
     } finally {
       setLoading(false);
     }
   }
 
-  // ---------- Keyboard enter ----------
+  // ---- Keyboard enter ----
   ['input-book', 'input-author', 'input-genre'].forEach(id => {
     document.getElementById(id)?.addEventListener('keydown', e => {
       if (e.key === 'Enter') search();
     });
   });
+
+  // ---- Init ----
+  updateCounter();
 
   return { search, switchMode, setGenre };
 })();
