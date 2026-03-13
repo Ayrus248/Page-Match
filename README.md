@@ -2,7 +2,7 @@
 
 AI-powered book recommendations based on books you've read, favourite authors, or genres — with real Reddit community discussions.
 
-**Live demo:** [your-site.netlify.app](https://pagematch.netlify.app)
+**Live demo:** [pagematch.netlify.app](https://pagematch.netlify.app)
 
 ---
 
