@@ -4,7 +4,7 @@
 
 const App = (() => {
 
-  const DAILY_LIMIT = 10;
+  const DAILY_LIMIT = 20;
   let currentMode = 'book';
 
   const $ = id => document.getElementById(id);
