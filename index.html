@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PageMatch — Book Recommendations</title>
+  <meta name="description" content="AI-powered book recommendations — by book, author, or genre." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="/" class="logo">PageMatch</a>
+      <p class="tagline">AI-powered book recommendations · community insights from Reddit</p>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="container">
+      <h1 class="hero-title">Your next favourite book<br><em>is one search away.</em></h1>
+      <p class="hero-sub">Find your next read by book, author, or genre — powered by AI and real Reddit discussions.</p>
+    </div>
+  </section>
+
+  <main class="main-content">
+    <div class="container">
+
+      <div class="search-card">
+
+        <!-- MODE TABS -->
+        <div class="mode-tabs" role="tablist">
+          <button class="mode-tab active" data-mode="book"   onclick="App.switchMode('book')">
+            <span class="tab-icon">📖</span>
+            <span class="tab-label">By Book</span>
+          </button>
+          <button class="mode-tab"        data-mode="author" onclick="App.switchMode('author')">
+            <span class="tab-icon">✍️</span>
+            <span class="tab-label">By Author</span>
+          </button>
+          <button class="mode-tab"        data-mode="genre"  onclick="App.switchMode('genre')">
+            <span class="tab-icon">🏷️</span>
+            <span class="tab-label">By Genre</span>
+          </button>
+        </div>
+
+        <!-- BOOK MODE -->
+        <div id="panel-book" class="mode-panel">
+          <label class="search-label" for="input-book">What's the last book you read?</label>
+          <div class="input-row">
+            <input id="input-book" type="text" placeholder="e.g. The Name of the Wind by Patrick Rothfuss" autocomplete="off" />
+            <button class="btn-primary" onclick="App.search()">Find Books</button>
+          </div>
+          <div class="options-row">
+            <label class="option-check"><input type="checkbox" id="opt-reddit" checked /> Reddit threads</label>
+            <label class="option-check"><input type="checkbox" id="opt-series" /> Include series</label>
+            <label class="option-check"><input type="checkbox" id="opt-classics" /> Mix in classics</label>
+          </div>
+        </div>
+
+        <!-- AUTHOR MODE -->
+        <div id="panel-author" class="mode-panel hidden">
+          <label class="search-label" for="input-author">Which author do you enjoy?</label>
+          <p class="input-hint">We'll recommend books by the same author <em>and</em> similar authors you might love.</p>
+          <div class="input-row">
+            <input id="input-author" type="text" placeholder="e.g. Agatha Christie" autocomplete="off" />
+            <button class="btn-primary" onclick="App.search()">Find Books</button>
+          </div>
+          <div class="options-row">
+            <label class="option-check"><input type="checkbox" id="opt-reddit-author" checked /> Reddit threads</label>
+            <label class="option-check"><input type="checkbox" id="opt-same-author" /> Same author only</label>
+          </div>
+        </div>
+
+        <!-- GENRE MODE -->
+        <div id="panel-genre" class="mode-panel hidden">
+          <label class="search-label" for="input-genre">What genre or mood are you in for?</label>
+          <p class="input-hint">Type freely — or tap a quick pick below.</p>
+          <div class="input-row">
+            <input id="input-genre" type="text" placeholder="e.g. cozy mystery, dark fantasy, feel-good romance…" autocomplete="off" />
+            <button class="btn-primary" onclick="App.search()">Find Books</button>
+          </div>
+          <div class="genre-pills">
+            <span class="genre-pill" onclick="App.setGenre(this)">Fantasy</span>
+            <span class="genre-pill" onclick="App.setGenre(this)">Sci-Fi</span>
+            <span class="genre-pill" onclick="App.setGenre(this)">Mystery</span>
+            <span class="genre-pill" onclick="App.setGenre(this)">Romance</span>
+            <span class="genre-pill" onclick="App.setGenre(this)">Thriller</span>
+            <span class="genre-pill" onclick="App.setGenre(this)">Historical Fiction</span>
+            <span class="genre-pill" onclick="App.setGenre(this)">Horror</span>
+            <span class="genre-pill" onclick="App.setGenre(this)">Literary Fiction</span>
+            <span class="genre-pill" onclick="App.setGenre(this)">Non-Fiction</span>
+            <span class="genre-pill" onclick="App.setGenre(this)">Self-Help</span>
+          </div>
+          <div class="options-row">
+            <label class="option-check"><input type="checkbox" id="opt-reddit-genre" checked /> Reddit threads</label>
+            <label class="option-check"><input type="checkbox" id="opt-classics-genre" /> Mix in classics</label>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- STATUS -->
+      <div id="status-bar" class="status-bar hidden">
+        <span class="spinner"></span>
+        <span id="status-text">Finding your next great read…</span>
+      </div>
+
+      <!-- ERROR -->
+      <div id="error-box" class="error-box hidden" role="alert"></div>
+
+      <!-- RESULTS -->
+      <section id="results" class="results hidden" aria-live="polite">
+        <div id="ai-section">
+          <div class="section-header">
+            <h2 class="section-title" id="results-title">Recommended for you</h2>
+            <span class="badge" id="results-badge">AI picks</span>
+          </div>
+          <div class="recs-grid" id="recs-grid"></div>
+        </div>
+
+        <hr class="divider" id="reddit-divider" />
+
+        <div id="reddit-section">
+          <div class="section-header">
+            <div class="reddit-icon">
+              <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 0C4.48 0 0 4.48 0 10s4.48 10 10 10 10-4.48 10-10S15.52 0 10 0zm5.08 10.37a1.3 1.3 0 01.09.69c0 2.77-3.23 5.02-7.21 5.02S.84 13.83.84 11.06c0-.24.03-.47.08-.69a1.33 1.33 0 01-.52-1.05 1.33 1.33 0 012.28-.92C3.85 7.7 5.67 7 7.67 6.93l.88-4.12a.33.33 0 01.4-.25l2.9.6a.93.93 0 11-.12.64l-2.58-.54-.78 3.65c1.98.1 3.77.8 5 2.02a1.33 1.33 0 112.29 1.98c0-.01-.48-.44-.48-.44zM7.25 11.06a.92.92 0 100 1.84.92.92 0 000-1.84zm5.5 0a.92.92 0 100 1.84.92.92 0 000-1.84zm-4.68 3.15a.33.33 0 01.47-.47 1.5 1.5 0 002.07 0 .33.33 0 01.47.47 2.17 2.17 0 01-3.01 0z"/>
+              </svg>
+            </div>
+            <h2 class="section-title">Reddit community threads</h2>
+            <span class="badge badge-reddit">r/books · r/booksuggestions</span>
+          </div>
+          <div class="reddit-threads" id="reddit-threads"></div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>Built with <a href="https://aistudio.google.com" target="_blank" rel="noopener">Gemini AI</a> · Community data from <a href="https://www.reddit.com" target="_blank" rel="noopener">Reddit</a></p>
+
+    </div>
+  </footer>
+
+  <script src="js/reddit.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
